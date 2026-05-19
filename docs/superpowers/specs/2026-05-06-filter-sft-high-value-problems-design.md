@@ -31,10 +31,15 @@ The workflow is:
 The runner expects a JSONL file where each line is a JSON object containing at least:
 
 - `id`
+- `solver_prompt`
 - `problem_statement`
 - `function_signature`
 
-Other fields such as `language`, `difficulty`, `constraints`, and `edge_cases_hinted` are optional but will be forwarded into prompts when present.
+`solver_prompt` is the primary input sent to the solver model.
+
+`problem_statement` and `function_signature` are retained for judge prompting and auditability.
+
+Other fields such as `language`, `difficulty`, `constraints`, and `edge_cases_hinted` are optional but will be forwarded into judge and fallback prompt assembly when present.
 
 Example shape:
 
@@ -51,6 +56,7 @@ Example shape:
   "input_format": "Input description.",
   "output_format": "Output description.",
   "constraints": ["1 <= len(events) <= 1e5"],
+  "solver_prompt": "Solve this problem in python...\nReturn only code.",
   "edge_cases_hinted": ["empty input", "duplicate timestamps"],
   "anti_homogeneity_notes": "Different from others by scenario and pitfall.",
   "input_scale_class": "1e5-event-stream",
@@ -113,63 +119,71 @@ Implications:
 
 ## Model Interface
 
-Both models are called through an OpenAI-compatible API.
+Both models are called through an OpenAI-compatible Chat Completions API.
 
-Shared configuration:
+The runner must send:
 
-- one `api_base`
-- one environment variable for the API key by default
+- `POST {api_base}/chat/completions`
+- `model`
+- `messages`
+- `temperature`
+- `response_format` for the judge call when supported by the provider
 
-Distinct runtime settings:
+The runner must read:
 
-- `solver_model`
-- `judge_model`
-- optional separate prompts
-- optional separate temperatures
+- `choices[0].message.content`
+
+If the provider returns a non-2xx response, the item is treated as a per-item failure and kept.
+
+Current default configuration mode:
+
+- one shared `OPENAI_BASE_URL`
+- one shared `OPENAI_API_KEY`
+- distinct `solver.model`
+- distinct `judge.model`
 
 ## Required Parameters
 
 - `input_jsonl_path`
-- `kept_output_jsonl_path`
-- `dropped_output_jsonl_path`
-- `audit_log_jsonl_path`
-- `api_base`
-- `solver_model`
-- `judge_model`
+- either `output_dir` or all of:
+  - `kept_output_jsonl_path`
+  - `dropped_output_jsonl_path`
+  - `audit_log_jsonl_path`
+- `solver.model`
+- `judge.model`
 
-The API key is not passed inline. It is read from an environment variable.
+The gateway and API key are not passed inline in the default mode. They are read from a local `.env` file or the process environment.
 
-Default:
+Default shared env variables:
 
 - `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
 
-Configurable:
+Recommended config transport:
 
-- `api_key_env`
+- `env_file`
 
 ## Optional Parameters
 
 - `start_index`
 - `max_items`
-- `concurrency`
 - `request_timeout_sec`
 - `solver_temperature`
 - `judge_temperature`
+- `judge_use_response_format`
 - `solver_system_prompt`
 - `judge_system_prompt`
 - `language_filter`
 - `resume_from_audit`
 
+
 ## Prompting Rules
 
 ### Solver Prompt
 
-Must instruct the solver to:
+The solver prompt comes directly from `record["solver_prompt"]`.
 
-- output pure code only
-- avoid markdown fences
-- implement exactly the requested function
-- avoid extra explanation
+The runner does not synthesize the primary solver instruction in the main input mode.
 
 ### Judge Prompt
 
@@ -194,6 +208,37 @@ Normalization rules:
 - `correct` must become boolean
 - `confidence` must be clamped into `[0, 1]`
 - missing reason becomes a fallback string
+- non-JSON judge content is a per-item failure
+
+## Output Schema
+
+### Kept and Dropped Records
+
+Each output record must include:
+
+- original input fields
+- `filter_decision`
+- `judge_correct`
+- `judge_confidence`
+- `judge_reason`
+- `solver_code`
+- `solver_model`
+- `judge_model`
+
+### Audit Record
+
+Each audit record must include:
+
+- `id`
+- `timestamp`
+- `decision`
+- `judge_correct`
+- `judge_confidence`
+- `judge_reason`
+- `solver_model`
+- `judge_model`
+- `solver_code`
+- `error` when present
 
 ## Error Handling
 
@@ -226,15 +271,41 @@ The project will contain:
 
 The skill should be repo-local and invoke the script with a JSON config file or CLI arguments.
 
+The runner should validate:
+
+- valid JSONL input
+- required fields `id`, `problem_statement`, and `function_signature`
+- existing input path
+- writable output paths
+
+Filtering and windowing order:
+
+1. apply `language_filter`
+2. apply `start_index`
+3. apply `max_items`
+4. then skip already-processed ids when `resume_from_audit` is enabled
+
+This means `start_index` and `max_items` are defined over the filtered input stream, not over the post-resume remainder.
+
 ## Recommended Invocation Style
 
-The user should provide a complete parameter block in one shot.
+The user should provide a complete parameter block in one shot through a JSON config file.
 
-Recommended config transport:
+Recommended shared-gateway config:
 
-- a JSON config file path passed to the script
-
-This reduces fragile shell quoting for prompts and paths.
+```json
+{
+  "input_jsonl_path": "/path/to/problems.jsonl",
+  "output_dir": "/path/to/output",
+  "env_file": "/path/to/.env",
+  "solver": {
+    "model": "solver-model-name"
+  },
+  "judge": {
+    "model": "judge-model-name"
+  }
+}
+```
 
 ## Risks
 

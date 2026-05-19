@@ -4,7 +4,7 @@
 
 **Goal:** Build a repo-local skill and Python runner that filters problem JSONL records into kept and dropped outputs using a solver model and a subjective judge model over an OpenAI-compatible API.
 
-**Architecture:** A local `SKILL.md` defines triggering conditions, config contract, and invocation flow. A single Python runner handles config loading, prompt construction, model calls, verdict normalization, output routing, audit logging, and resume behavior. Tests isolate the core logic with fake model clients so the workflow is deterministic.
+**Architecture:** A local `SKILL.md` defines triggering conditions, config contract, and invocation flow. A single Python runner handles config loading, prompt construction, model calls, verdict normalization, output routing, audit logging, and resume behavior. It talks to an OpenAI-compatible Chat Completions endpoint and treats judge failures as keep-worthy. Tests isolate the core logic with fake model clients so the workflow is deterministic.
 
 **Tech Stack:** Python 3, standard library, `urllib` for HTTP, `pytest` for tests, repo-local skill layout
 
@@ -20,7 +20,7 @@
 - [ ] **Step 1: Write the failing test**
 
 ```python
-def test_load_config_requires_api_key_env(monkeypatch, tmp_path):
+def test_resolve_api_key_requires_env_var(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     cfg = {"api_key_env": "OPENAI_API_KEY"}
     with pytest.raises(ConfigError):
@@ -29,8 +29,8 @@ def test_load_config_requires_api_key_env(monkeypatch, tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_filter_sft_high_value_problems.py::test_load_config_requires_api_key_env -v`
-Expected: FAIL because the module and function do not exist yet
+Run: `pytest tests/test_filter_sft_high_value_problems.py::test_resolve_api_key_requires_env_var -v`
+Expected: FAIL because `ConfigError` and `resolve_api_key` are not implemented yet
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -38,7 +38,7 @@ Implement the module, `ConfigError`, and `resolve_api_key`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pytest tests/test_filter_sft_high_value_problems.py::test_load_config_requires_api_key_env -v`
+Run: `pytest tests/test_filter_sft_high_value_problems.py::test_resolve_api_key_requires_env_var -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -72,7 +72,7 @@ Expected: FAIL because normalization does not exist yet
 
 - [ ] **Step 3: Write minimal implementation**
 
-Implement normalization and record routing helpers.
+Implement normalization and `route_record`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -134,20 +134,23 @@ def test_resume_skips_existing_problem_ids(tmp_path):
 
 def test_judge_parse_failure_defaults_to_keep_and_audit_error(tmp_path):
     ...
+
+def test_rejects_invalid_jsonl_input(tmp_path):
+    ...
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_filter_sft_high_value_problems.py -k "resume or judge_parse_failure" -v`
+Run: `pytest tests/test_filter_sft_high_value_problems.py -k "resume or judge_parse_failure or invalid_jsonl" -v`
 Expected: FAIL because those flows are not implemented yet
 
 - [ ] **Step 3: Write minimal implementation**
 
-Implement audit-log replay for processed ids and keep-on-error fallback.
+Implement audit-log replay for processed ids, keep-on-error fallback, and input validation.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_filter_sft_high_value_problems.py -k "resume or judge_parse_failure" -v`
+Run: `pytest tests/test_filter_sft_high_value_problems.py -k "resume or judge_parse_failure or invalid_jsonl" -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -170,6 +173,7 @@ Checklist:
 - states API key env behavior
 - states coarse subjective-judge limitation
 - points to exact script path
+- mentions kept, dropped, and audit outputs
 
 - [ ] **Step 2: Verify the checklist currently fails**
 
@@ -217,6 +221,7 @@ Check:
 - judge outputs structured JSON by prompt contract
 - writes kept, dropped, and audit JSONL
 - reads API key from environment variable
+- uses the OpenAI-compatible Chat Completions endpoint
 
 - [ ] **Step 4: Commit**
 
@@ -224,3 +229,24 @@ Check:
 git add docs/superpowers/specs/2026-05-06-filter-sft-high-value-problems-design.md docs/superpowers/plans/2026-05-06-filter-sft-high-value-problems.md skills/filter-sft-high-value-problems tests
 git commit -m "feat: implement local skill for filtering sft problem value"
 ```
+
+### Remediation Follow-Up
+
+Priority gaps discovered during implementation review:
+
+- Per-item solver failures currently abort the whole batch and must fall back to `keep`.
+- The design spec still describes the older flat config shape and must be synchronized with the shared-gateway, split-model mode.
+- `start_index`, `max_items`, and `language_filter` are documented but not implemented.
+- Audit logs need stronger raw evidence for later QA.
+- Prompt assembly should include optional metadata fields when present.
+- Config path validation is still weaker than the spec requires.
+- Judge `response_format` should be configurable for compatibility.
+- JSONL input should move from eager loading to streaming.
+
+Execution order:
+
+1. Add solver-failure fallback and tests.
+2. Sync spec and skill docs to the current config mode.
+3. Implement `start_index`, `max_items`, and `language_filter`.
+4. Expand audit schema and prompt metadata.
+5. Add config path validation, `response_format` compatibility, and stream reading.
