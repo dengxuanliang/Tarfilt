@@ -2,3 +2,10 @@
 __pycache__/
 *.pyc
 .worktrees/
+.env
+config.json
+config.smoke-gpt54.json
+smoke_output/
+smoke_output_gpt54/
+smoke_input_2.jsonl
+smoke_input_50.jsonl
