@@ -7,8 +7,6 @@ import pytest
 
 MODULE_PATH = (
     Path(__file__).resolve().parent.parent
-    / "skills"
-    / "filter-sft-high-value-problems"
     / "scripts"
     / "filter_sft_high_value_problems.py"
 )

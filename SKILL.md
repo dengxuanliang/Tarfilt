@@ -138,7 +138,7 @@ So slicing applies to the filtered input stream before resume skips already-audi
 Run:
 
 ```bash
-python3 skills/filter-sft-high-value-problems/scripts/filter_sft_high_value_problems.py --config /path/to/config.json
+python3 scripts/filter_sft_high_value_problems.py --config /path/to/config.json
 ```
 
 Recommended config:
