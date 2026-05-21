@@ -3,10 +3,15 @@ import json
 import argparse
 import urllib.request
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 
 class ConfigError(Exception):
     pass
+
+
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+_DEFAULT_OPENER = urllib.request.build_opener()
 
 
 class OpenAICompatibleClient:
@@ -190,6 +195,18 @@ def _extract_content(payload):
         raise ConfigError("Malformed chat completions response") from exc
 
 
+def _select_opener(url):
+    hostname = urlparse(url).hostname or ""
+    no_proxy = os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
+    no_proxy_hosts = [h.strip() for h in no_proxy.split(",") if h.strip()]
+    for host in no_proxy_hosts:
+        if host.startswith(".") and hostname.endswith(host):
+            return _NO_PROXY_OPENER
+        if hostname == host:
+            return _NO_PROXY_OPENER
+    return _DEFAULT_OPENER
+
+
 def _post_chat_completion(chat_completions_url, api_key, body, timeout_sec):
     req = urllib.request.Request(
         chat_completions_url,
@@ -201,7 +218,7 @@ def _post_chat_completion(chat_completions_url, api_key, body, timeout_sec):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as response:
+        with _select_opener(chat_completions_url).open(req, timeout=timeout_sec) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         raise RuntimeError(f"Chat completions request failed: {exc}") from exc

@@ -159,6 +159,55 @@ def test_client_routes_solver_and_judge_to_role_specific_endpoints(tmp_path, mon
     assert captured[1]["api_key"] == "judge-key"
 
 
+def test_select_opener_uses_no_proxy_for_matching_host(monkeypatch):
+    module = load_module()
+    monkeypatch.setenv("NO_PROXY", "solver.example,.internal.example")
+    no_proxy_opener = object()
+    default_opener = object()
+    monkeypatch.setattr(module, "_NO_PROXY_OPENER", no_proxy_opener, raising=False)
+    monkeypatch.setattr(module, "_DEFAULT_OPENER", default_opener, raising=False)
+
+    assert module._select_opener("https://solver.example/v1/chat/completions") is no_proxy_opener
+    assert module._select_opener("https://api.internal.example/v1/chat/completions") is no_proxy_opener
+    assert module._select_opener("https://public.example/v1/chat/completions") is default_opener
+
+
+def test_post_chat_completion_uses_selected_opener(monkeypatch):
+    module = load_module()
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {"choices": [{"message": {"content": "print(1)"}}]}
+            ).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, req, timeout=None):
+            captured["req"] = req
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+    monkeypatch.setattr(module, "_select_opener", lambda url: FakeOpener())
+
+    out = module._post_chat_completion(
+        "https://solver.example/v1/chat/completions",
+        "solver-key",
+        {"model": "solver-model", "messages": []},
+        42,
+    )
+
+    assert out == "print(1)"
+    assert captured["timeout"] == 42
+    assert captured["req"].full_url == "https://solver.example/v1/chat/completions"
+
+
 def test_normalize_judge_response_clamps_confidence_and_defaults_reason():
     module = load_module()
     verdict = module.normalize_judge_response({"correct": "yes", "confidence": 7})
