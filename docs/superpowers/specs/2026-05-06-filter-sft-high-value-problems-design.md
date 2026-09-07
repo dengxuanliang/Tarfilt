@@ -123,7 +123,7 @@ Both models are called through an OpenAI-compatible Chat Completions API.
 
 The runner must send:
 
-- `POST {api_base}/chat/completions`
+- `POST` to each role's configured `chat_completions_url`
 - `model`
 - `messages`
 - `temperature`
@@ -135,12 +135,15 @@ The runner must read:
 
 If the provider returns a non-2xx response, the item is treated as a per-item failure and kept.
 
-Current default configuration mode:
+Current configuration mode is per-role endpoints:
 
-- one shared `OPENAI_BASE_URL`
-- one shared `OPENAI_API_KEY`
+- `solver.chat_completions_url` — full chat completions URL for the solver
+- `judge.chat_completions_url` — full chat completions URL for the judge
+- each role resolves its API key from the env var named by that role's `api_key_env`
 - distinct `solver.model`
 - distinct `judge.model`
+
+The old shared-gateway shape (`OPENAI_BASE_URL` / shared `OPENAI_API_KEY`) is no longer supported.
 
 ## Required Parameters
 
@@ -149,15 +152,19 @@ Current default configuration mode:
   - `kept_output_jsonl_path`
   - `dropped_output_jsonl_path`
   - `audit_log_jsonl_path`
+- `solver.chat_completions_url`
+- `solver.api_key_env`
 - `solver.model`
+- `judge.chat_completions_url`
+- `judge.api_key_env`
 - `judge.model`
 
-The gateway and API key are not passed inline in the default mode. They are read from a local `.env` file or the process environment.
+API keys are not passed inline. Each role reads its key from the env var named by its `api_key_env`, resolved from `env_file` first with the process environment as fallback.
 
-Default shared env variables:
+Default per-role env variables:
 
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
+- `SOLVER_API_KEY`
+- `JUDGE_API_KEY`
 
 Recommended config transport:
 
@@ -263,18 +270,18 @@ This avoids duplicate model calls in interrupted runs.
 
 ## Local Skill Layout
 
-The project will contain:
+The project contains a flattened skill layout:
 
-- `skills/filter-sft-high-value-problems/SKILL.md`
-- `skills/filter-sft-high-value-problems/scripts/filter_sft_high_value_problems.py`
+- `SKILL.md`
+- `scripts/filter_sft_high_value_problems.py`
 - `tests/test_filter_sft_high_value_problems.py`
 
-The skill should be repo-local and invoke the script with a JSON config file or CLI arguments.
+The skill is repo-local and invokes the script with a JSON config file.
 
-The runner should validate:
+The runner validates:
 
 - valid JSONL input
-- required fields `id`, `problem_statement`, and `function_signature`
+- required fields `id`, `solver_prompt`, `problem_statement`, and `function_signature`
 - existing input path
 - writable output paths
 
@@ -291,7 +298,7 @@ This means `start_index` and `max_items` are defined over the filtered input str
 
 The user should provide a complete parameter block in one shot through a JSON config file.
 
-Recommended shared-gateway config:
+Recommended per-role config:
 
 ```json
 {
@@ -299,9 +306,13 @@ Recommended shared-gateway config:
   "output_dir": "/path/to/output",
   "env_file": "/path/to/.env",
   "solver": {
+    "chat_completions_url": "http://solver-host/v1/chat/completions",
+    "api_key_env": "SOLVER_API_KEY",
     "model": "solver-model-name"
   },
   "judge": {
+    "chat_completions_url": "http://judge-host/v1/chat/completions",
+    "api_key_env": "JUDGE_API_KEY",
     "model": "judge-model-name"
   }
 }

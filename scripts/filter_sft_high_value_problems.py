@@ -195,14 +195,34 @@ def _extract_content(payload):
         raise ConfigError("Malformed chat completions response") from exc
 
 
+def _no_proxy_entries():
+    raw_values = [os.environ.get("no_proxy"), os.environ.get("NO_PROXY")]
+    entries = []
+    for raw in raw_values:
+        if not raw:
+            continue
+        for entry in raw.split(","):
+            entry = entry.strip().lower()
+            if entry and entry not in entries:
+                entries.append(entry)
+    return entries
+
+
+def _host_matches_no_proxy_entry(hostname, entry):
+    if entry == "*":
+        return True
+    if entry.startswith("*."):
+        entry = entry[1:]
+    if entry.endswith("*"):
+        return hostname.startswith(entry[:-1])
+    entry = entry.lstrip(".")
+    return hostname == entry or hostname.endswith("." + entry)
+
+
 def _select_opener(url):
-    hostname = urlparse(url).hostname or ""
-    no_proxy = os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
-    no_proxy_hosts = [h.strip() for h in no_proxy.split(",") if h.strip()]
-    for host in no_proxy_hosts:
-        if host.startswith(".") and hostname.endswith(host):
-            return _NO_PROXY_OPENER
-        if hostname == host:
+    hostname = (urlparse(url).hostname or "").lower()
+    for entry in _no_proxy_entries():
+        if _host_matches_no_proxy_entry(hostname, entry):
             return _NO_PROXY_OPENER
     return _DEFAULT_OPENER
 

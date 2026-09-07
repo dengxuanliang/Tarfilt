@@ -161,6 +161,8 @@ def test_client_routes_solver_and_judge_to_role_specific_endpoints(tmp_path, mon
 
 def test_select_opener_uses_no_proxy_for_matching_host(monkeypatch):
     module = load_module()
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.delenv("NO_PROXY", raising=False)
     monkeypatch.setenv("NO_PROXY", "solver.example,.internal.example")
     no_proxy_opener = object()
     default_opener = object()
@@ -170,6 +172,39 @@ def test_select_opener_uses_no_proxy_for_matching_host(monkeypatch):
     assert module._select_opener("https://solver.example/v1/chat/completions") is no_proxy_opener
     assert module._select_opener("https://api.internal.example/v1/chat/completions") is no_proxy_opener
     assert module._select_opener("https://public.example/v1/chat/completions") is default_opener
+
+
+def test_select_opener_merges_lowercase_and_uppercase_no_proxy(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.setenv("no_proxy", "localhost,.huawei.com")
+    monkeypatch.setenv("NO_PROXY", ".huawei.com,.bigmodel.cn")
+    no_proxy_opener = object()
+    default_opener = object()
+    monkeypatch.setattr(module, "_NO_PROXY_OPENER", no_proxy_opener, raising=False)
+    monkeypatch.setattr(module, "_DEFAULT_OPENER", default_opener, raising=False)
+
+    # .bigmodel.cn only exists in the uppercase list and must still be honored.
+    assert module._select_opener("https://api.bigmodel.cn/v1/chat/completions") is no_proxy_opener
+    assert module._select_opener("http://localhost:8080/v1/chat/completions") is no_proxy_opener
+    assert module._select_opener("https://public.example/v1/chat/completions") is default_opener
+
+
+def test_select_opener_supports_wildcard_and_bare_domain_entries(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv("NO_PROXY", "10.*,*.corp.example,corp.example,*")
+    no_proxy_opener = object()
+    default_opener = object()
+    monkeypatch.setattr(module, "_NO_PROXY_OPENER", no_proxy_opener, raising=False)
+    monkeypatch.setattr(module, "_DEFAULT_OPENER", default_opener, raising=False)
+
+    assert module._select_opener("http://10.62.1.20:8000/v1/chat/completions") is no_proxy_opener
+    assert module._select_opener("https://api.corp.example/v1/chat/completions") is no_proxy_opener
+    assert module._select_opener("https://service.deep.corp.example/v1/chat/completions") is no_proxy_opener
+    # "*" alone bypasses everything.
+    assert module._select_opener("https://anything.example/v1/chat/completions") is no_proxy_opener
 
 
 def test_post_chat_completion_uses_selected_opener(monkeypatch):

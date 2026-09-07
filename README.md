@@ -118,6 +118,8 @@ Audit records also include:
 - `decision`
 - `judge_raw_response`
 - `normalized_verdict`
+- `solver_prompt_excerpt`
+- `judge_prompt_excerpt`
 - `failure_stage`
 - `error`
 
@@ -128,6 +130,7 @@ Audit records also include:
 - Judge output must include a valid `correct` value.
 - If solver or judge fails, the row is kept by fallback.
 - `response_format` can be disabled with `judge_use_response_format=false` if the gateway does not support it.
+- Requests honor `http_proxy`/`https_proxy` when set. `no_proxy` and `NO_PROXY` are merged; entries may be hostnames, domains (`.example.com` matches subdomains, `example.com` matches itself and subdomains), wildcard prefixes (`10.*`), or `*` for all hosts.
 
 ## Run
 

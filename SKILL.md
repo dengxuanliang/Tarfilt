@@ -122,6 +122,11 @@ The audit log includes:
 - `solver_model`
 - `judge_model`
 - `solver_code`
+- `judge_raw_response`
+- `normalized_verdict`
+- `solver_prompt_excerpt`
+- `judge_prompt_excerpt`
+- `failure_stage`
 - `error`
 
 Filtering order:
@@ -147,7 +152,7 @@ Recommended config:
 {
   "input_jsonl_path": "/path/to/problems.jsonl",
   "output_dir": "/path/to/output",
-  "env_file": "/Users/deng/开发/Tarfilt/.worktrees/filter-sft-high-value-problems/.env",
+  "env_file": "/path/to/.env",
   "solver": {
     "chat_completions_url": "http://solver-host/v1/chat/completions",
     "api_key_env": "SOLVER_API_KEY",
@@ -174,3 +179,4 @@ JUDGE_API_KEY=...
 - Judge failures are kept by fallback.
 - Malformed input JSONL should be fixed before trusting results.
 - Some OpenAI-compatible gateways do not support `response_format`; set `judge_use_response_format` to `false` in that case.
+- Requests honor `http_proxy`/`https_proxy` when set. `no_proxy` and `NO_PROXY` are merged; entries may be hostnames, domains (`.example.com` matches subdomains, `example.com` matches itself and subdomains), wildcard prefixes (`10.*`), or `*` for all hosts.
